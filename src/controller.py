@@ -2,6 +2,8 @@ import signal
 import sys
 import logging
 from evdev import InputDevice, ecodes, list_devices
+from msp_sender import MSPSender
+
 
 # Logging setup
 logging.basicConfig(
@@ -30,6 +32,9 @@ class DroneController:
         # Filtered values
         self.filtered = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.0}
 
+        # MSP Sender
+        self.msp = MSPSender()
+
         # Setup exit handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -52,6 +57,9 @@ class DroneController:
         print("\n")
         logger.info("Exit signal received. Disarming and shutting down...")
         self.armed = False
+        if hasattr(self, 'msp'):
+            self.msp.update_values(self.filtered, self.armed)
+            self.msp.close()
         sys.exit(0)
 
     def _normalize(self, value, invert=False):
@@ -121,6 +129,9 @@ class DroneController:
             # Apply Filtering to all axes
             for axis in self.filtered:
                 self.filtered[axis] = self._apply_lpf(self.raw[axis], self.filtered[axis])
+
+            # Update MSP Sender
+            self.msp.update_values(self.filtered, self.armed)
 
             self._print_status()
 
