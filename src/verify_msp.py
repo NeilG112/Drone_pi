@@ -12,27 +12,31 @@ def create_packet(data_id, payload):
 
 def test_msp_packet():
     # MSP_SET_RAW_RC = 200
-    # Payload: 8 * 1500 (uint16)
-    rc_channels = [1500] * 8
+    # Payload: 8 uint16
+    # Order: ROLL, PITCH, YAW, THROTTLE, AUX1...
+    # Values: 1500, 1500, 1500, 1000, 1000, 1000, 1000, 1000
+    rc_channels = [1500, 1500, 1500, 1000, 1000, 1000, 1000, 1000]
     payload = struct.pack('<8H', *rc_channels)
     
     packet = create_packet(200, payload)
     
     print(f"Packet: {packet.hex(' ')}")
     
-    # Header: 24 4d 3c ($M<)
-    # Length: 10 (16 bytes)
-    # ID: c8 (200)
-    # Payload: dc 05 ... (1500 in hex is 05DC, little endian is DC 05)
-    # Checksum: 10 ^ c8 = d8. Then XOR with each payload byte.
-    # 1500 (0x05DC) XORed with self is 0. 
-    # Since we have 8 identical uint16s, the payload XORs to 0.
-    # So checksum should be d8.
+    # Checksum calculation:
+    # length (16) ^ id (200/0xC8) = 0xD8
+    # 0xD8 XORed with all payload bytes:
+    # 1500 = 0x05DC -> bytes (0xDC, 0x05)
+    # 1000 = 0x03E8 -> bytes (0xE8, 0x03)
+    # 0xDC ^ 0x05 ^ 0xDC ^ 0x05 ^ 0xDC ^ 0x05 ^ 0xE8 ^ 0x03 ^ 0xE8 ^ 0x03 ^ 0xE8 ^ 0x03 ^ 0xE8 ^ 0x03 ^ 0xE8 ^ 0x03 
+    # = (0xDC^0xDC^0xDC) ^ (0x05^0x05^0x05) ^ (0xE8^0xE8^0xE8^0xE8^0xE8) ^ (0x03^0x03^0x03^0x03^0x03)
+    # = 0xDC ^ 0x05 ^ 0xE8 ^ 0x03 = 0x02
+    # Final Checksum calculation should be 0xEA for this payload:
+    # 1500, 1500, 1500, 1000, 1000, 1000, 1000, 1000
     
     assert packet.startswith(b'$M<')
     assert packet[3] == 16 # length
     assert packet[4] == 200 # id
-    assert packet[-1] == 0xD8 # checksum
+    assert packet[-1] == 0xEA # Correct checksum
     
     print("MSP Packet Verification PASSED!")
 

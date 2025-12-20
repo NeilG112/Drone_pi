@@ -70,6 +70,7 @@ class MSPSender:
     def update_values(self, filtered_vals, armed):
         """
         Updates internal RC values from normalized controller values.
+        MSP_SET_RAW_RC Order: [Roll, Pitch, Yaw, Throttle, AUX1, AUX2, AUX3, AUX4]
         - Roll/Pitch/Yaw: -1.0 to 1.0 -> 1000-2000
         - Throttle: 0.0 to 1.0 -> 1000-2000
         """
@@ -77,14 +78,15 @@ class MSPSender:
             self.armed = armed
             
             if not self.armed:
-                # Safety: Force throttle low and AUX1 low
-                self.rc_channels = [1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000]
+                # Safety: Force throttle low (1000) and centering sticks (1500)
+                # Order: R, P, Y, T, AUX1...
+                self.rc_channels = [1500, 1500, 1500, 1000, 1000, 1000, 1000, 1000]
             else:
                 # Map control values
                 self.rc_channels[0] = int(1500 + (filtered_vals["roll"] * 500))
                 self.rc_channels[1] = int(1500 + (filtered_vals["pitch"] * 500))
-                self.rc_channels[2] = int(1000 + (filtered_vals["throttle"] * 1000))
-                self.rc_channels[3] = int(1500 + (filtered_vals["yaw"] * 500))
+                self.rc_channels[2] = int(1500 + (filtered_vals["yaw"] * 500))
+                self.rc_channels[3] = int(1000 + (filtered_vals["throttle"] * 1000))
                 self.rc_channels[4] = 2000 # AUX1 (ARMED)
 
             # Clamp values to 1000-2000
