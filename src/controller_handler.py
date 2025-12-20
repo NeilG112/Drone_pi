@@ -69,12 +69,18 @@ class ControllerHandler:
         # ABS_X: Yaw (Left Stick X)
         # ABS_RX: Roll (Right Stick X)
         # ABS_RY: Pitch (Right Stick Y, Inverted)
+        # ABS_HAT0X/Y: D-pad
         self.axis_map = {
             ecodes.ABS_X: "yaw",
             ecodes.ABS_RX: "roll",
             ecodes.ABS_RY: "pitch",
-            ecodes.ABS_RZ: "throttle"
+            ecodes.ABS_RZ: "throttle",
+            ecodes.ABS_HAT0X: "dpad_x",
+            ecodes.ABS_HAT0Y: "dpad_y"
         }
+        
+        # D-pad state
+        self.dpad = {"x": 0, "y": 0}
         
         # Load capabilities
         self.abs_info = {}
@@ -93,11 +99,14 @@ class ControllerHandler:
         return True
 
     def _normalize(self, value, info, key, invert=False):
-        """Normalizes stick/trigger input"""
+        """Normalizes stick/trigger/dpad input"""
         if key == "throttle":
             # Trigger: 0 to 255 -> 0.0 to 1.0 (no center, no deadzone needed usually)
             n = (value - info.min) / (info.max - info.min)
             return n if not invert else (1.0 - n)
+        elif "dpad" in key:
+            # D-pad: usually -1, 0, 1. Just return directly.
+            return value
         else:
             # Stick: centered mapping with 5% deadzone
             center = (info.max + info.min) // 2
@@ -126,7 +135,7 @@ class ControllerHandler:
                 if not self.running:
                     break
                 
-                # Handle axes (Sticks & Triggers)
+                # Handle axes (Sticks, Triggers, D-pad)
                 if event.type == ecodes.EV_ABS:
                     if event.code in self.axis_map:
                         key = self.axis_map[event.code]
@@ -139,20 +148,26 @@ class ControllerHandler:
                                 invert = True
                             
                             val = self._normalize(event.value, info, key, invert=invert)
-                            raw_state[key] = val
                             
-                            # Update filtered state
-                            # We filter everything for smoothness
-                            for axis in filtered_state:
-                                filtered_state[axis] = self._apply_lpf(raw_state[axis], filtered_state[axis])
-                            
-                            # Convert to 1000-2000 for RC
-                            if key == "throttle":
-                                # 0.0 to 1.0 -> 1000 to 2000
-                                self.rc_values["throttle"] = int(1000 + (filtered_state["throttle"] * 1000))
+                            if "dpad" in key:
+                                if key == "dpad_x":
+                                    self.dpad["x"] = val
+                                else:
+                                    self.dpad["y"] = val
                             else:
-                                # -1.0 to 1.0 -> 1000 to 2000 (center 1500)
-                                self.rc_values[key] = int(1500 + (filtered_state[key] * 500))
+                                raw_state[key] = val
+                                
+                                # Update filtered state
+                                for axis in filtered_state:
+                                    filtered_state[axis] = self._apply_lpf(raw_state[axis], filtered_state[axis])
+                                
+                                # Convert to 1000-2000 for RC
+                                if key == "throttle":
+                                    # 0.0 to 1.0 -> 1000 to 2000
+                                    self.rc_values["throttle"] = int(1000 + (filtered_state["throttle"] * 1000))
+                                else:
+                                    # -1.0 to 1.0 -> 1000 to 2000 (center 1500)
+                                    self.rc_values[key] = int(1500 + (filtered_state[key] * 500))
                                 
                 # Handle buttons
                 elif event.type == ecodes.EV_KEY:

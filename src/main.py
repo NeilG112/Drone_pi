@@ -76,6 +76,28 @@ def main():
             if handler.is_button_pressed(PS4Buttons.CIRCLE):
                 drone.disarm()
 
+            # --- FLIGHT MODE SWITCHING ---
+            
+            # LOITER: Triangle
+            if handler.is_button_pressed(PS4Buttons.TRIANGLE):
+                drone.set_mode("LOITER")
+            
+            # ALT_HOLD: Square
+            if handler.is_button_pressed(PS4Buttons.SQUARE):
+                drone.set_mode("ALT_HOLD")
+            
+            # STABILIZE: D-Pad Left (HAT X = -1)
+            if handler.dpad["x"] == -1:
+                drone.set_mode("STABILIZE")
+            
+            # RTL: D-Pad Right (HAT X = 1)
+            if handler.dpad["x"] == 1:
+                drone.set_mode("RTL")
+            
+            # LAND: D-Pad Down (HAT Y = 1)
+            if handler.dpad["y"] == 1:
+                drone.set_mode("LAND")
+
             # 6. Send RC Overrides to Drone (FAST: 20Hz)
             drone.send_rc_override(
                 roll=rc["roll"],
@@ -101,7 +123,7 @@ def main():
                     "----------------------------------------------------".ljust(60),
                     f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}".ljust(60),
                     "----------------------------------------------------".ljust(60),
-                    f" [X] ARM | [Circle] DISARM | [Options] KILL (STOP)".ljust(60),
+                    f" [X] ARM | [Circle] DISARM | [Options] KILL | [△/▢/D-Pad] MODES".ljust(60),
                     f" DEBUG: Last Button Code Received: {handler.last_button}".ljust(60),
                     "====================================================".ljust(60)
                 ]
