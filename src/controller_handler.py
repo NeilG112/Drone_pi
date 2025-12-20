@@ -11,6 +11,7 @@ class ControllerHandler:
         self.device_name = device_name
         self.rc_values = {"roll": 1500, "pitch": 1500, "throttle": 1000, "yaw": 1500}
         self.buttons = {}
+        self.last_button = None
         self.running = False
         self.thread = None
         
@@ -30,6 +31,7 @@ class ControllerHandler:
         for device in devices:
             if self.device_name in device.name:
                 self.device = device
+                print(f"✅ Found {device.name} at {device.path}")
                 return True
         return False
 
@@ -89,6 +91,8 @@ class ControllerHandler:
                 # Handle buttons
                 elif event.type == ecodes.EV_KEY:
                     self.buttons[event.code] = event.value
+                    if event.value == 1:
+                        self.last_button = event.code
                     
         except Exception as e:
             print(f"❌ Controller error: {e}")

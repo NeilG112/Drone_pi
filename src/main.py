@@ -10,7 +10,10 @@ MAVLINK_PORT = "/dev/ttyACM0"  # Default for USB connection to FC
 MAVLINK_BAUD = 115200
 
 def clear_screen():
-    os.system('cls' if os.name == 'nt' else 'clear')
+    # Use ANSI escape codes to move cursor to (0,0) and clear screen
+    # This is much faster than os.system('clear')
+    sys.stdout.write("\033[H\033[J")
+    sys.stdout.flush()
 
 def main():
     # 1. Initialize Drone Controller
@@ -95,7 +98,8 @@ def main():
             print("----------------------------------------------------")
             print(f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}")
             print("----------------------------------------------------")
-            print(" [Options] ARM | [Share] DISARM | [PS] KILL (STOP)")
+            print(f" [Options] ARM | [Share] DISARM | [PS] KILL (STOP)")
+            print(f" DEBUG: Last Button Code Received: {handler.last_button}")
             print("====================================================")
             
             time.sleep(0.05) # ~20Hz update rate
