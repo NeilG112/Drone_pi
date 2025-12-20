@@ -37,11 +37,19 @@ class MSPSender:
         logger.info(f"MSP Sender started on {port} at {rate_hz}Hz")
 
     def _start_serial(self):
+        if self.ser and self.ser.is_open:
+            return True
         try:
             self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+            logger.info(f"Connected to serial port {self.port}")
+            return True
         except Exception as e:
-            logger.error(f"Failed to open serial port {self.port}: {e}")
+            # Only log error occasionally to avoid spamming
+            if not hasattr(self, '_last_conn_error') or time.time() - self._last_conn_error > 5:
+                logger.error(f"Failed to open serial port {self.port}: {e}")
+                self._last_conn_error = time.time()
             self.ser = None
+            return False
 
     def update_values(self, filtered_vals, armed):
         """
@@ -54,11 +62,7 @@ class MSPSender:
             
             if not self.armed:
                 # Safety: Force throttle low and AUX1 low
-                self.rc_channels[0] = 1500 # Roll
-                self.rc_channels[1] = 1500 # Pitch
-                self.rc_channels[2] = 1000 # Throttle
-                self.rc_channels[3] = 1500 # Yaw
-                self.rc_channels[4] = 1000 # AUX1 (DISARMED)
+                self.rc_channels = [1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000]
             else:
                 # Map control values
                 self.rc_channels[0] = int(1500 + (filtered_vals["roll"] * 500))
@@ -86,7 +90,7 @@ class MSPSender:
         while self.running:
             start_time = time.time()
             
-            if self.ser and self.ser.is_open:
+            if self._start_serial():
                 with self.data_lock:
                     # MSP_SET_RAW_RC payload is 8 units of uint16
                     payload = struct.pack('<8H', *self.rc_channels)
@@ -97,6 +101,8 @@ class MSPSender:
                     self.ser.flush()
                 except Exception as e:
                     logger.error(f"Serial write error: {e}")
+                    self.ser.close()
+                    self.ser = None
             
             # Sleep to maintain frequency
             elapsed = time.time() - start_time
@@ -105,6 +111,21 @@ class MSPSender:
                 time.sleep(sleep_time)
 
     def close(self):
+        """Clean shutdown: disarm first, then stop thread."""
+        logger.info("Closing MSP Sender...")
+        # 1. Force disarm state in RC values
+        with self.data_lock:
+            self.armed = False
+            self.rc_channels = [1500, 1500, 1000, 1500, 1000, 1000, 1000, 1000]
+        
+        # 2. Give the loop a moment to send the disarm packet
+        time.sleep(self.interval * 2)
+        
+        # 3. Stop thread and serial
         self.running = False
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+            
         if self.ser and self.ser.is_open:
             self.ser.close()
+        logger.info("MSP Sender closed.")

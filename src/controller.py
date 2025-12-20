@@ -82,7 +82,14 @@ class DroneController:
 
     def run(self):
         """Main loop to process controller events."""
-        logger.info("System Ready. Status: DISARMED (Press X to ARM, O to DISARM, Options to KILL)")
+        print("-" * 50)
+        print("DRONE PI SYSTEM READY")
+        print("Controls:")
+        print("  [X]        - ARM (Throttle must be at 0)")
+        print("  [Triangle] - DISARM")
+        print("  [Circle]   - DISARM")
+        print("  [Options]  - KILL/EXIT")
+        print("-" * 50)
         
         try:
             for event in self.dev.read_loop():
@@ -99,32 +106,38 @@ class DroneController:
         if event.type == ecodes.EV_KEY and event.value == 1:
             if event.code == ecodes.BTN_SOUTH:  # X Button
                 if not self.armed:
-                    self.armed = True
-                    logger.info("SYSTEM ARMED")
-            elif event.code == ecodes.BTN_EAST:   # O Button
+                    # Safe Start Check: Throttle must be below 0.05
+                    if self.filtered["throttle"] < 0.05:
+                        self.armed = True
+                        logger.info("SYSTEM ARMED")
+                    else:
+                        logger.warning("CANNOT ARM: Throttle not at zero!")
+            
+            elif event.code in [ecodes.BTN_NORTH, ecodes.BTN_EAST]:  # Triangle or Circle
                 if self.armed:
                     self.armed = False
                     self._reset_inputs()
                     logger.info("SYSTEM DISARMED")
+            
             elif event.code == ecodes.BTN_START:  # Options Button
                 logger.warning("!!! KILL SIGNAL RECEIVED !!!")
                 self.armed = False
+                self.msp.update_values(self.filtered, self.armed)
+                self.msp.close()
                 sys.exit(0)
 
         # Stick Events
         elif event.type == ecodes.EV_ABS:
-            if not self.armed:
-                self._reset_inputs()
-            else:
-                if event.code == ecodes.ABS_X:
-                    self.raw["roll"] = self._normalize(event.value)
-                elif event.code == ecodes.ABS_Y:
-                    self.raw["pitch"] = self._normalize(event.value, invert=True)
-                elif event.code == ecodes.ABS_RX:
-                    self.raw["yaw"] = self._normalize(event.value)
-                elif event.code == ecodes.ABS_RY:
-                    # Map throttle to 0.0 to 1.0
-                    self.raw["throttle"] = (self._normalize(event.value, invert=True) + 1) / 2
+            if event.code == ecodes.ABS_X:
+                self.raw["roll"] = self._normalize(event.value)
+            elif event.code == ecodes.ABS_Y:
+                self.raw["pitch"] = self._normalize(event.value, invert=True)
+            elif event.code == ecodes.ABS_RX:
+                self.raw["yaw"] = self._normalize(event.value)
+            elif event.code == ecodes.ABS_RY:
+                # Map throttle to 0.0 to 1.0 (Down is usually high value, up is low value in evdev for RY)
+                # But let's check _normalize. If invert=True, up becomes 1.0.
+                self.raw["throttle"] = (self._normalize(event.value, invert=True) + 1) / 2
 
             # Apply Filtering to all axes
             for axis in self.filtered:
@@ -137,17 +150,15 @@ class DroneController:
 
     def _print_status(self):
         """Prints the current state formatted for status line."""
-        status = "ARMED" if self.armed else "DISARMED"
+        status = "[\033[91mARMED\033[0m]" if self.armed else "[\033[92mDISARMED\033[0m]"
         f = self.filtered
-        print(
-            f"\r{status} | "
-            f"Roll: {f['roll']:+.2f} | "
-            f"Pitch: {f['pitch']:+.2f} | "
-            f"Yaw: {f['yaw']:+.2f} | "
-            f"Thrott: {f['throttle']:.2f}",
-            end="",
-            flush=True
-        )
+        # Clear line and print status
+        sys.stdout.write(f"\r{status} | "
+                         f"R: {f['roll']:+.2f} | "
+                         f"P: {f['pitch']:+.2f} | "
+                         f"Y: {f['yaw']:+.2f} | "
+                         f"T: {f['throttle']:.2f}    ")
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     try:
