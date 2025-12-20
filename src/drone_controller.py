@@ -239,6 +239,30 @@ class DroneController:
         self.debug("→ RC override released")
         return True
 
+    def set_parameter(self, param_name, param_value):
+        """Set a MAVLink parameter"""
+        if not self.master or not self.connected:
+            return False
+            
+        # Ensure param_name is bytes
+        if isinstance(param_name, str):
+            param_name = param_name.encode('utf-8')
+            
+        self.master.mav.param_set_send(
+            self.master.target_system,
+            self.master.target_component,
+            param_name,
+            param_value,
+            mavutil.mavlink.MAV_PARAM_TYPE_REAL32
+        )
+        self.debug(f"→ Setting parameter {param_name.decode()} to {param_value}")
+        return True
+
+    def set_orientation_upside_down(self):
+        """Set AHRS_ORIENTATION to Roll180 (8) for upside down mounting"""
+        # Note: AHRS_ORIENTATION = 8 is Roll180
+        return self.set_parameter("AHRS_ORIENTATION", 8)
+
     def disconnect(self):
         """Disconnect from drone"""
         if self.master:

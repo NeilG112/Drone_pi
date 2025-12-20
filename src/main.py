@@ -98,6 +98,15 @@ def main():
             if handler.dpad["y"] == 1:
                 drone.set_mode("LAND")
 
+            # --- SYSTEM CONFIGURATION ---
+            
+            # FC ORIENTATION FIX: Hold L1 + R1 and press Triangle
+            if handler.is_button_pressed(PS4Buttons.L1) and handler.is_button_pressed(PS4Buttons.R1):
+                if handler.is_button_pressed(PS4Buttons.TRIANGLE):
+                    print("\n🔄 APPLYING FC ORIENTATION FIX (UPSIDE DOWN)...")
+                    drone.set_orientation_upside_down()
+                    time.sleep(1) # Visual feedback delay
+
             # 6. Send RC Overrides to Drone (FAST: 20Hz)
             drone.send_rc_override(
                 roll=rc["roll"],
@@ -123,7 +132,7 @@ def main():
                     "----------------------------------------------------".ljust(60),
                     f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}".ljust(60),
                     "----------------------------------------------------".ljust(60),
-                    f" [X] ARM | [Circle] DISARM | [Options] KILL | [△/▢/D-Pad] MODES".ljust(60),
+                    f" [X] ARM | [Circle] DISARM | [Options] KILL | [L1+R1+△] FIX FC".ljust(60),
                     f" DEBUG: Last Button Code Received: {handler.last_button}".ljust(60),
                     "====================================================".ljust(60)
                 ]
