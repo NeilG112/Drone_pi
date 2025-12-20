@@ -64,17 +64,16 @@ class ControllerHandler:
                 print(f"❌ Could not find {self.device_name}")
                 return False
         
-        # Cache AbsInfo for performance and set axis map based on old code
-        # Old code axis usage:
-        # ABS_X: Roll
-        # ABS_Y: Pitch (Inverted)
-        # ABS_RX: Yaw
-        # ABS_RY: Throttle (Inverted, mapped to 0.0-1.0)
+        # Mode 2 Layout:
+        # ABS_RZ: Throttle (Trigger R2, 0 to 255)
+        # ABS_X: Yaw (Left Stick X)
+        # ABS_RX: Roll (Right Stick X)
+        # ABS_RY: Pitch (Right Stick Y, Inverted)
         self.axis_map = {
-            ecodes.ABS_X: "roll",
-            ecodes.ABS_Y: "pitch",
-            ecodes.ABS_RX: "yaw",
-            ecodes.ABS_RY: "throttle"
+            ecodes.ABS_X: "yaw",
+            ecodes.ABS_RX: "roll",
+            ecodes.ABS_RY: "pitch",
+            ecodes.ABS_RZ: "throttle"
         }
         
         # Load capabilities
@@ -84,11 +83,8 @@ class ControllerHandler:
             if code in self.axis_map:
                 self.abs_info[code] = info
 
-        # Filter parameters from old code
+        # Filter parameters
         self.ALPHA = 0.25
-        self.DEADZONE = 5
-        self.CENTER = 128 # Default center if not calibrated
-        self.MAX_RANGE = 127
         
         print(f"🎮 Connected to {self.device.name} at {self.device.path}")
         self.running = True
@@ -97,25 +93,31 @@ class ControllerHandler:
         return True
 
     def _normalize(self, value, info, invert=False):
-        """Normalizes stick input to -1.0 to 1.0 range with deadzone (from old code)"""
-        center = (info.max + info.min) // 2
-        max_range = (info.max - info.min) // 2
-        
-        delta = value - center
-        # Simple deadzone check
-        if abs(delta) < (max_range * 0.05): # 5% deadzone
-            return 0.0
+        """Normalizes stick/trigger input"""
+        if info.code == ecodes.ABS_RZ:
+            # Trigger: 0 to 255 -> 0.0 to 1.0 (no center, no deadzone needed usually)
+            n = (value - info.min) / (info.max - info.min)
+            return n if not invert else (1.0 - n)
+        else:
+            # Stick: centered mapping with 5% deadzone
+            center = (info.max + info.min) // 2
+            max_range = (info.max - info.min) // 2
             
-        n = max(-1.0, min(1.0, delta / max_range))
-        return -n if invert else n
+            delta = value - center
+            if abs(delta) < (max_range * 0.05): # 5% deadzone
+                return 0.0
+                
+            n = max(-1.0, min(1.0, delta / max_range))
+            return -n if invert else n
 
     def _apply_lpf(self, new, old):
-        """First-order low-pass filter (from old code)"""
+        """First-order low-pass filter"""
         return self.ALPHA * new + (1 - self.ALPHA) * old
 
     def _run(self):
         """Background thread to read events with LPF"""
-        # Internal state for LPF (normalized -1.0 to 1.0)
+        # Internal state for LPF
+        # Sticks are -1.0 to 1.0, Throttle is 0.0 to 1.0
         filtered_state = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.0}
         raw_state = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.0}
 
@@ -124,31 +126,33 @@ class ControllerHandler:
                 if not self.running:
                     break
                 
-                # Handle axes (Sticks)
+                # Handle axes (Sticks & Triggers)
                 if event.type == ecodes.EV_ABS:
                     if event.code in self.axis_map:
                         key = self.axis_map[event.code]
                         info = self.abs_info.get(event.code)
                         
                         if info:
-                            # Normalize based on old code preferences
+                            # Normalize
                             invert = False
-                            if key in ["pitch", "throttle"]:
+                            if key == "pitch": # Push stick forward = pitch down
                                 invert = True
                             
                             val = self._normalize(event.value, info, invert=invert)
                             raw_state[key] = val
                             
                             # Update filtered state
+                            # We filter everything for smoothness
                             for axis in filtered_state:
                                 filtered_state[axis] = self._apply_lpf(raw_state[axis], filtered_state[axis])
                             
                             # Convert to 1000-2000 for RC
-                            # Throttle is mapped -1.0 to 1.0 -> 1000 to 2000
-                            self.rc_values["throttle"] = int(1500 + (filtered_state["throttle"] * 500))
-                            self.rc_values["roll"] = int(1500 + (filtered_state["roll"] * 500))
-                            self.rc_values["pitch"] = int(1500 + (filtered_state["pitch"] * 500))
-                            self.rc_values["yaw"] = int(1500 + (filtered_state["yaw"] * 500))
+                            if key == "throttle":
+                                # 0.0 to 1.0 -> 1000 to 2000
+                                self.rc_values["throttle"] = int(1000 + (filtered_state["throttle"] * 1000))
+                            else:
+                                # -1.0 to 1.0 -> 1000 to 2000 (center 1500)
+                                self.rc_values[key] = int(1500 + (filtered_state[key] * 500))
                                 
                 # Handle buttons
                 elif event.type == ecodes.EV_KEY:
