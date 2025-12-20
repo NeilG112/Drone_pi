@@ -28,12 +28,20 @@ class ControllerHandler:
     def find_device(self):
         """Find the controller device by name"""
         devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
+        found_any = False
         for device in devices:
             if self.device_name in device.name:
                 self.device = device
                 print(f"✅ Found {device.name} at {device.path}")
-                return True
-        return False
+                found_any = True
+                # Usually there are 3 devices for a PS4 controller. 
+                # We want the one that has buttons and axes.
+                # If we don't get events, we might need to try another one.
+                caps = device.capabilities()
+                if ecodes.EV_KEY in caps and ecodes.EV_ABS in caps:
+                    print(f"🎯 This looks like the main controller node.")
+                    return True
+        return found_any
 
     def start(self):
         """Start the background reading thread"""

@@ -10,9 +10,8 @@ MAVLINK_PORT = "/dev/ttyACM0"  # Default for USB connection to FC
 MAVLINK_BAUD = 115200
 
 def clear_screen():
-    # Use ANSI escape codes to move cursor to (0,0) and clear screen
-    # This is much faster than os.system('clear')
-    sys.stdout.write("\033[H\033[J")
+    # Only move cursor to top-left. Don't clear screen to avoid flicker.
+    sys.stdout.write("\033[H")
     sys.stdout.flush()
 
 def main():
@@ -87,22 +86,29 @@ def main():
             # 7. Update CMD Display
             s = drone.status
             clear_screen()
-            print("====================================================")
-            print("🚁 RASPBERRY PI DRONE CONTROL (Headless)")
-            print("====================================================")
-            print(f" Status:  {'🔴 ARMED' if s['armed'] else '🟢 DISARMED'} | Mode: {s['mode']}")
-            print(f" Battery: {s['battery_v']:.2f}V ({s['battery_remaining']}%) | Current: {s['battery_a']:.1f}A")
-            print(f" GPS:     {s['gps_fix']} Fix | Satellites: {s['num_sats']}")
-            print(f" Attitude: R:{s['roll']:>5.1f}° | P:{s['pitch']:>5.1f}° | Y:{s['yaw']:>5.1f}°")
-            print(f" Alt:      {s['alt']:.1f}m | Speed: {s['groundspeed']:.1f}m/s")
-            print("----------------------------------------------------")
-            print(f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}")
-            print("----------------------------------------------------")
-            print(f" [Options] ARM | [Share] DISARM | [PS] KILL (STOP)")
-            print(f" DEBUG: Last Button Code Received: {handler.last_button}")
-            print("====================================================")
             
-            time.sleep(0.05) # ~20Hz update rate
+            # Use a list of lines to print all at once to minimize network packets over SSH
+            lines = [
+                "====================================================".ljust(60),
+                "🚁 RASPBERRY PI DRONE CONTROL (Headless)".ljust(60),
+                "====================================================".ljust(60),
+                f" Status:  {'🔴 ARMED' if s['armed'] else '🟢 DISARMED'} | Mode: {s['mode']}".ljust(60),
+                f" Battery: {s['battery_v']:.2f}V ({s['battery_remaining']}%) | Current: {s['battery_a']:.1f}A".ljust(60),
+                f" GPS:     {s['gps_fix']} Fix | Satellites: {s['num_sats']}".ljust(60),
+                f" Attitude: R:{s['roll']:>5.1f}° | P:{s['pitch']:>5.1f}° | Y:{s['yaw']:>5.1f}°".ljust(60),
+                f" Alt:      {s['alt']:.1f}m | Speed: {s['groundspeed']:.1f}m/s".ljust(60),
+                "----------------------------------------------------".ljust(60),
+                f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}".ljust(60),
+                "----------------------------------------------------".ljust(60),
+                f" [Options] ARM | [Share] DISARM | [PS] KILL (STOP)".ljust(60),
+                f" DEBUG: Last Button Code Received: {handler.last_button}".ljust(60),
+                "====================================================".ljust(60)
+            ]
+            
+            sys.stdout.write("\n".join(lines) + "\n")
+            sys.stdout.flush()
+            
+            time.sleep(0.1) # Frequency reduced to 10Hz for smoother SSH
 
     except KeyboardInterrupt:
         print("\n👋 Exiting safely...")
