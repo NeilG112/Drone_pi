@@ -18,7 +18,7 @@ def main():
     
     # 2. Initialize Controller Handler
     handler = ControllerHandler()
-    if not handler.connect():
+    if not handler.find_device():
         print("❌ Fatal: PS4 Controller not found. Please connect via Bluetooth or USB.")
         sys.exit(1)
     
