@@ -84,8 +84,12 @@ class DroneController:
         """Main loop to process controller events."""
         print("-" * 50)
         print("DRONE PI SYSTEM READY")
-        print("Controls:")
-        print("  [X]        - ARM (Throttle must be at 0)")
+        print("Controls (Standard Mode 2):")
+        print("  Left Stick  - Throttle (Up/Down), Yaw (Left/Right)")
+        print("  Right Stick - Pitch (Up/Down), Roll (Left/Right)")
+        print("-" * 50)
+        print("Safety:")
+        print("  [X]        - ARM (Must HOLD Left Stick DOWN)")
         print("  [Triangle] - DISARM")
         print("  [Circle]   - DISARM")
         print("  [Options]  - KILL/EXIT")
@@ -107,11 +111,12 @@ class DroneController:
             if event.code == ecodes.BTN_SOUTH:  # X Button
                 if not self.armed:
                     # Safe Start Check: Throttle must be below 0.05
+                    # On PS4 sticks, holding down gives 0.0, center gives 0.5
                     if self.filtered["throttle"] < 0.05:
                         self.armed = True
                         logger.info("SYSTEM ARMED")
                     else:
-                        logger.warning("CANNOT ARM: Throttle not at zero!")
+                        logger.warning(f"CANNOT ARM: Throttle is at {self.filtered['throttle']:.2f}. HOLD LEFT STICK DOWN!")
             
             elif event.code in [ecodes.BTN_NORTH, ecodes.BTN_EAST]:  # Triangle or Circle
                 if self.armed:
@@ -128,16 +133,18 @@ class DroneController:
 
         # Stick Events
         elif event.type == ecodes.EV_ABS:
+            # LEFT STICK (Throttle & Yaw)
             if event.code == ecodes.ABS_X:
-                self.raw["roll"] = self._normalize(event.value)
-            elif event.code == ecodes.ABS_Y:
-                self.raw["pitch"] = self._normalize(event.value, invert=True)
-            elif event.code == ecodes.ABS_RX:
                 self.raw["yaw"] = self._normalize(event.value)
-            elif event.code == ecodes.ABS_RY:
-                # Map throttle to 0.0 to 1.0 (Down is usually high value, up is low value in evdev for RY)
-                # But let's check _normalize. If invert=True, up becomes 1.0.
+            elif event.code == ecodes.ABS_Y:
+                # Up is low value, Down is high value. Inverting makes Up=1.0, Down=-1.0.
                 self.raw["throttle"] = (self._normalize(event.value, invert=True) + 1) / 2
+            
+            # RIGHT STICK (Roll & Pitch)
+            elif event.code == ecodes.ABS_RX:
+                self.raw["roll"] = self._normalize(event.value)
+            elif event.code == ecodes.ABS_RY:
+                self.raw["pitch"] = self._normalize(event.value, invert=True)
 
             # Apply Filtering to all axes
             for axis in self.filtered:

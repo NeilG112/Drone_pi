@@ -23,8 +23,12 @@ See [Setup Guide](docs/setup_rpi.md) for detailed instructions on setting up you
    python3 src/controller.py
    ```
 
-## Controls
-- **X**: ARM (if throttle is 0)
+### Controls (Mode 2)
+- **X Button**: ARM (Only if **Left Stick** is held all the way **DOWN**)
 - **Triangle / Circle**: DISARM
-- **Options**: STOP / KILL
-- **Sticks**: Standard Mode 2 (Throttle/Yaw on Left, Pitch/Roll on Right)
+- **Options**: STOP PROGRAM / EMERGENCY DISARM
+- **Left Stick**: Throttle (Up/Down) & Yaw (Left/Right)
+- **Right Stick**: Pitch (Up/Down) & Roll (Left/Right)
+
+> [!NOTE]
+> Because PS4 sticks spring back to the center, releasing the stick will result in **50% throttle (0.50)**. You must keep your thumb on the stick for flight control.
