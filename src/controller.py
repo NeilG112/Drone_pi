@@ -2,7 +2,7 @@ import signal
 import sys
 import logging
 from evdev import InputDevice, ecodes, list_devices
-from msp_sender import MSPSender
+from msp_sender import CRSFSender
 
 
 # Logging setup
@@ -32,8 +32,8 @@ class DroneController:
         # Filtered values
         self.filtered = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.0}
 
-        # MSP Sender
-        self.msp = MSPSender()
+        # CRSF Sender
+        self.sender = CRSFSender()
 
         # Setup exit handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -57,9 +57,9 @@ class DroneController:
         print("\n")
         logger.info("Exit signal received. Disarming and shutting down...")
         self.armed = False
-        if hasattr(self, 'msp'):
-            self.msp.update_values(self.filtered, self.armed)
-            self.msp.close()
+        if hasattr(self, 'sender'):
+            self.sender.update_values(self.filtered, self.armed)
+            self.sender.close()
         sys.exit(0)
 
     def _normalize(self, value, invert=False):
@@ -83,7 +83,7 @@ class DroneController:
     def run(self):
         """Main loop to process controller events."""
         print("-" * 50)
-        print("DRONE PI SYSTEM READY")
+        print("DRONE PI SYSTEM READY (CRSF MODE)")
         print("Controls (Standard Mode 2):")
         print("  Left Stick  - Throttle (Up/Down), Yaw (Left/Right)")
         print("  Right Stick - Pitch (Up/Down), Roll (Left/Right)")
@@ -127,8 +127,8 @@ class DroneController:
             elif event.code == ecodes.BTN_START:  # Options Button
                 logger.warning("!!! KILL SIGNAL RECEIVED !!!")
                 self.armed = False
-                self.msp.update_values(self.filtered, self.armed)
-                self.msp.close()
+                self.sender.update_values(self.filtered, self.armed)
+                self.sender.close()
                 sys.exit(0)
 
         # Stick Events
@@ -150,8 +150,8 @@ class DroneController:
             for axis in self.filtered:
                 self.filtered[axis] = self._apply_lpf(self.raw[axis], self.filtered[axis])
 
-            # Update MSP Sender
-            self.msp.update_values(self.filtered, self.armed)
+            # Update CRSF Sender
+            self.sender.update_values(self.filtered, self.armed)
 
             self._print_status()
 

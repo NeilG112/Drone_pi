@@ -1,10 +1,10 @@
 # Drone Pi
 
-A robust Raspberry Pi based drone control system for the **SpeedyBee F405 Mini** (or any Betaflight FC) using a PS4 controller via MSP.
+A robust Raspberry Pi based drone control system for the **SpeedyBee F405 Mini** (or any Betaflight FC) using a PS4 controller via **CRSF protocol**.
 
 ## Features
-- **MSP over USB**: High-rate RC command transmission (50Hz).
-- **Auto-Reconnect**: Automatically recovers if USB connection to FC is lost.
+- **CRSF over USB**: High-speed, industry-standard RC transmission.
+- **Auto-Reconnect**: Automatically recovers if USB connection is lost.
 - **PS4 Controller Support**: Full mapping for DualShock 4.
 - **Safety First**:
   - **Safe Start**: Prevents arming unless throttle is at zero.

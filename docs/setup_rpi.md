@@ -38,17 +38,22 @@ sudo usermod -a -G dialout,input $USER
    [bluetooth]# exit
    ```
 
-## 5. Betaflight Configuration
+## 5. Betaflight Configuration (CRSF Version)
 Connect your SpeedyBee F405 Mini to your computer and open Betaflight Configurator.
 
-1. **Ports Tab**:
+1. **Flash Firmware**: Use target `SPEEDYBEEF405MINI` and version `4.5.1`.
+2. **Ports Tab**:
    - Find **USB VCP**.
-   - Ensure **MSP** is enabled (it should be by default).
-2. **Receiver Tab**:
+   - Ensure **Serial RX** is enabled.
+3. **Receiver Tab**:
    - Receiver Mode: **Serial-based receiver**
-   - Serial Receiver Provider: **MSP**
-3. **Configuration Tab**:
-   - Ensure you are in a flight mode that allows arming via MSP (usually default).
+   - Serial Receiver Provider: **CRSF**
+4. **CLI Tab**: Run these commands:
+   ```text
+   set usb_arm_safe = ON
+   set small_angle = 180
+   save
+   ```
 
 ## 6. Run the Program
 Upload the code to your RPi and run:
