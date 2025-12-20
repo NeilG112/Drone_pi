@@ -56,24 +56,24 @@ def main():
             
             # 5. Handle Buttons (Safety Logic)
             
-            # KILL BUTTON: PS Button
+            # KILL BUTTON: Options Button
             # Immediate emergency disarm and exit
-            if handler.is_button_pressed(PS4Buttons.PS):
+            if handler.is_button_pressed(PS4Buttons.OPTIONS):
                 print("\n🛑 KILL SWITCH TRIGGERED! EMERGENCY DISARM! 🛑")
                 drone.disarm()
                 break
             
-            # ARM: Options Button
+            # ARM: X Button
             # Safety check: Only arm if throttle is low
-            if handler.is_button_pressed(PS4Buttons.OPTIONS):
+            if handler.is_button_pressed(PS4Buttons.X):
                 if rc["throttle"] < 1100:
                     drone.arm()
                 else:
                     # We can print this here, it will be visible for a split second or in console log
                     sys.stdout.write("\n⚠️ Safety: Cannot ARM with throttle above minimum!\n")
             
-            # DISARM: Share Button
-            if handler.is_button_pressed(PS4Buttons.SHARE):
+            # DISARM: Circle Button
+            if handler.is_button_pressed(PS4Buttons.CIRCLE):
                 drone.disarm()
 
             # 6. Send RC Overrides to Drone (FAST: 20Hz)
@@ -101,7 +101,7 @@ def main():
                     "----------------------------------------------------".ljust(60),
                     f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}".ljust(60),
                     "----------------------------------------------------".ljust(60),
-                    f" [Options] ARM | [Share] DISARM | [PS] KILL (STOP)".ljust(60),
+                    f" [X] ARM | [Circle] DISARM | [Options] KILL (STOP)".ljust(60),
                     f" DEBUG: Last Button Code Received: {handler.last_button}".ljust(60),
                     "====================================================".ljust(60)
                 ]

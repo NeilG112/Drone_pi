@@ -26,24 +26,30 @@ class ControllerHandler:
         }
         
     def find_device(self):
-        """Find the controller device by name"""
-        devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-        
-        # Priority: device with both EV_KEY and EV_ABS
-        for device in devices:
-            if self.device_name in device.name:
-                caps = device.capabilities()
-                if ecodes.EV_KEY in caps and ecodes.EV_ABS in caps:
-                    self.device = device
-                    print(f"✅ Found {device.name} (Main Node) at {device.path}")
-                    return True
+        """Find the controller device by name with improved robustness"""
+        for path in evdev.list_devices():
+            try:
+                device = evdev.InputDevice(path)
+                if self.device_name in device.name:
+                    caps = device.capabilities()
+                    if ecodes.EV_KEY in caps and ecodes.EV_ABS in caps:
+                        self.device = device
+                        print(f"✅ Found {device.name} (Main Node) at {device.path}")
+                        return True
+            except Exception as e:
+                # Some devices might not allow access, skip them
+                continue
         
         # Fallback: any device with the name
-        for device in devices:
-            if self.device_name in device.name:
-                self.device = device
-                print(f"⚠️ Found {device.name} (Partial Node) at {device.path}")
-                return True
+        for path in evdev.list_devices():
+            try:
+                device = evdev.InputDevice(path)
+                if self.device_name in device.name:
+                    self.device = device
+                    print(f"⚠️ Found {device.name} (Partial Node) at {device.path}")
+                    return True
+            except:
+                continue
                 
         return False
 
@@ -54,14 +60,61 @@ class ControllerHandler:
                 print(f"❌ Could not find {self.device_name}")
                 return False
         
+        # Cache AbsInfo for performance and set axis map based on old code
+        # Old code axis usage:
+        # ABS_X: Roll
+        # ABS_Y: Pitch (Inverted)
+        # ABS_RX: Yaw
+        # ABS_RY: Throttle (Inverted, mapped to 0.0-1.0)
+        self.axis_map = {
+            ecodes.ABS_X: "roll",
+            ecodes.ABS_Y: "pitch",
+            ecodes.ABS_RX: "yaw",
+            ecodes.ABS_RY: "throttle"
+        }
+        
+        # Load capabilities
+        self.abs_info = {}
+        caps = self.device.capabilities().get(ecodes.EV_ABS, [])
+        for code, info in caps:
+            if code in self.axis_map:
+                self.abs_info[code] = info
+
+        # Filter parameters from old code
+        self.ALPHA = 0.25
+        self.DEADZONE = 5
+        self.CENTER = 128 # Default center if not calibrated
+        self.MAX_RANGE = 127
+        
         print(f"🎮 Connected to {self.device.name} at {self.device.path}")
         self.running = True
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         return True
 
+    def _normalize(self, value, info, invert=False):
+        """Normalizes stick input to -1.0 to 1.0 range with deadzone (from old code)"""
+        center = (info.max + info.min) // 2
+        max_range = (info.max - info.min) // 2
+        
+        delta = value - center
+        # Simple deadzone check
+        if abs(delta) < (max_range * 0.05): # 5% deadzone
+            return 0.0
+            
+        n = max(-1.0, min(1.0, delta / max_range))
+        return -n if invert else n
+
+    def _apply_lpf(self, new, old):
+        """First-order low-pass filter (from old code)"""
+        return self.ALPHA * new + (1 - self.ALPHA) * old
+
     def _run(self):
-        """Background thread to read events"""
+        """Background thread to read events with LPF"""
+        # Internal state for LPF (normalized -1.0 to 1.0)
+        filtered_state = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.0}
+        raw_state = {"roll": 0.0, "pitch": 0.0, "yaw": 0.0, "throttle": 0.0}
+
         try:
             for event in self.device.read_loop():
                 if not self.running:
@@ -71,41 +124,27 @@ class ControllerHandler:
                 if event.type == ecodes.EV_ABS:
                     if event.code in self.axis_map:
                         key = self.axis_map[event.code]
-                        # evdev values are usually 0-255 or 0-65535. 
-                        # We need to map them to 1000-2000.
-                        # ArduPilot expects: Roll/Pitch/Yaw center at 1500, Throttle bottom at 1000.
-                        
-                        # Note: PS4 Controller on RPi usually gives 0-255 for axes.
-                        # But it depends on the driver. We'll use the device's info.
-                        abs_info = self.device.capabilities().get(ecodes.EV_ABS, [])
-                        info = next((i[1] for i in abs_info if i[0] == event.code), None)
+                        info = self.abs_info.get(event.code)
                         
                         if info:
-                            val_min = info.min
-                            val_max = info.max
+                            # Normalize based on old code preferences
+                            invert = False
+                            if key in ["pitch", "throttle"]:
+                                invert = True
                             
-                            # Map to 1000-2000
-                            normalized = (event.value - val_min) / (val_max - val_min)
+                            val = self._normalize(event.value, info, invert=invert)
+                            raw_state[key] = val
                             
-                            if key == "throttle":
-                                # control.py: throttle = int(1500 - (raw_throttle * 500))
-                                # raw_throttle is -1.0 to 1.0. 
-                                # In evdev: normalized 0.0 is top (-1.0), 1.0 is bottom (1.0).
-                                # So 0.0 -> 2000, 1.0 -> 1000.
-                                self.rc_values[key] = int(2000 - (normalized * 1000))
-                            elif key == "pitch":
-                                # control.py: pitch = int(1500 + (raw_pitch * 500))
-                                # raw_pitch is -1.0 to 1.0.
-                                # normalized 0.0 is top (-1.0) -> 1000, 1.0 is bottom (1.0) -> 2000.
-                                self.rc_values[key] = int(1000 + (normalized * 1000))
-                            elif key == "yaw":
-                                # control.py: yaw = int(1500 + (raw_yaw * 500))
-                                # normalized 0.0 is left (-1.0) -> 1000, 1.0 is right (1.0) -> 2000.
-                                self.rc_values[key] = int(1000 + (normalized * 1000))
-                            elif key == "roll":
-                                # control.py: roll = int(1500 + (raw_roll * 500))
-                                # normalized 0.0 is left (-1.0) -> 1000, 1.0 is right (1.0) -> 2000.
-                                self.rc_values[key] = int(1000 + (normalized * 1000))
+                            # Update filtered state
+                            for axis in filtered_state:
+                                filtered_state[axis] = self._apply_lpf(raw_state[axis], filtered_state[axis])
+                            
+                            # Convert to 1000-2000 for RC
+                            # Throttle is mapped -1.0 to 1.0 -> 1000 to 2000
+                            self.rc_values["throttle"] = int(1500 + (filtered_state["throttle"] * 500))
+                            self.rc_values["roll"] = int(1500 + (filtered_state["roll"] * 500))
+                            self.rc_values["pitch"] = int(1500 + (filtered_state["pitch"] * 500))
+                            self.rc_values["yaw"] = int(1500 + (filtered_state["yaw"] * 500))
                                 
                 # Handle buttons
                 elif event.type == ecodes.EV_KEY:
