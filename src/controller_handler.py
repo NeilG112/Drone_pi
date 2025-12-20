@@ -92,9 +92,9 @@ class ControllerHandler:
         self.thread.start()
         return True
 
-    def _normalize(self, value, info, invert=False):
+    def _normalize(self, value, info, key, invert=False):
         """Normalizes stick/trigger input"""
-        if info.code == ecodes.ABS_RZ:
+        if key == "throttle":
             # Trigger: 0 to 255 -> 0.0 to 1.0 (no center, no deadzone needed usually)
             n = (value - info.min) / (info.max - info.min)
             return n if not invert else (1.0 - n)
@@ -138,7 +138,7 @@ class ControllerHandler:
                             if key == "pitch": # Push stick forward = pitch down
                                 invert = True
                             
-                            val = self._normalize(event.value, info, invert=invert)
+                            val = self._normalize(event.value, info, key, invert=invert)
                             raw_state[key] = val
                             
                             # Update filtered state
