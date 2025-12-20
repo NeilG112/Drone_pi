@@ -31,6 +31,10 @@ class ControllerHandler:
             try:
                 device = evdev.InputDevice(path)
                 if self.device_name in device.name:
+                    # Filter out non-main nodes
+                    if "Touchpad" in device.name or "Motion Sensors" in device.name:
+                        continue
+                        
                     caps = device.capabilities()
                     if ecodes.EV_KEY in caps and ecodes.EV_ABS in caps:
                         self.device = device
