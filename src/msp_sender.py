@@ -39,17 +39,33 @@ class MSPSender:
     def _start_serial(self):
         if self.ser and self.ser.is_open:
             return True
-        try:
-            self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
-            logger.info(f"Connected to serial port {self.port}")
-            return True
-        except Exception as e:
-            # Only log error occasionally to avoid spamming
-            if not hasattr(self, '_last_conn_error') or time.time() - self._last_conn_error > 5:
-                logger.error(f"Failed to open serial port {self.port}: {e}")
-                self._last_conn_error = time.time()
-            self.ser = None
-            return False
+            
+        # Try primary port first
+        ports_to_try = [self.port]
+        
+        # Add other common RPi serial ports as fallbacks
+        fallbacks = ['/dev/ttyACM1', '/dev/ttyUSB0', '/dev/ttyUSB1']
+        for p in fallbacks:
+            if p not in ports_to_try:
+                ports_to_try.append(p)
+
+        for p in ports_to_try:
+            try:
+                self.ser = serial.Serial(p, self.baud, timeout=0.1)
+                logger.info(f"Connected to Flight Controller on {p}")
+                self.port = p # Update primary port to the one that worked
+                return True
+            except Exception:
+                continue
+                
+        # If all failed, log error occasionally
+        if not hasattr(self, '_last_conn_error') or time.time() - self._last_conn_error > 10:
+            logger.error(f"Could not find Flight Controller. (Checked: {', '.join(ports_to_try)})")
+            logger.error("Check USB connection and ensure 'MSP' is enabled on the USB port in Betaflight.")
+            self._last_conn_error = time.time()
+        
+        self.ser = None
+        return False
 
     def update_values(self, filtered_vals, armed):
         """
@@ -87,6 +103,9 @@ class MSPSender:
 
     def _sender_loop(self):
         """Fixed-rate transmission loop."""
+        last_heartbeat = time.time()
+        packet_count = 0
+        
         while self.running:
             start_time = time.time()
             
@@ -99,10 +118,18 @@ class MSPSender:
                 try:
                     self.ser.write(packet)
                     self.ser.flush()
+                    packet_count += 1
                 except Exception as e:
                     logger.error(f"Serial write error: {e}")
                     self.ser.close()
                     self.ser = None
+
+            # Periodic heartbeat logging
+            if time.time() - last_heartbeat > 10:
+                if self.ser and self.ser.is_open:
+                    logger.info(f"MSP Heartbeat: Sent {packet_count} packets in last 10s. Status: {'ARMED' if self.armed else 'DISARMED'}")
+                last_heartbeat = time.time()
+                packet_count = 0
             
             # Sleep to maintain frequency
             elapsed = time.time() - start_time
@@ -123,7 +150,7 @@ class MSPSender:
         
         # 3. Stop thread and serial
         self.running = False
-        if self.thread.is_alive():
+        if hasattr(self, 'thread') and self.thread.is_alive():
             self.thread.join(timeout=1.0)
             
         if self.ser and self.ser.is_open:
