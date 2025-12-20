@@ -49,6 +49,7 @@ def main():
     time.sleep(1)
 
     try:
+        iteration = 0
         while True:
             # 4. Read Controller Input
             rc = handler.get_rc_values()
@@ -68,14 +69,14 @@ def main():
                 if rc["throttle"] < 1100:
                     drone.arm()
                 else:
-                    print("⚠️ Safety: Cannot ARM with throttle above minimum!")
+                    # We can print this here, it will be visible for a split second or in console log
+                    sys.stdout.write("\n⚠️ Safety: Cannot ARM with throttle above minimum!\n")
             
             # DISARM: Share Button
             if handler.is_button_pressed(PS4Buttons.SHARE):
                 drone.disarm()
 
-            # 6. Send RC Overrides to Drone
-            # We send this even if not armed (ArduPilot handles safety)
+            # 6. Send RC Overrides to Drone (FAST: 20Hz)
             drone.send_rc_override(
                 roll=rc["roll"],
                 pitch=rc["pitch"],
@@ -83,32 +84,33 @@ def main():
                 yaw=rc["yaw"]
             )
 
-            # 7. Update CMD Display
-            s = drone.status
-            clear_screen()
+            # 7. Update CMD Display (SLOW: 2Hz)
+            if iteration % 10 == 0:
+                s = drone.status
+                clear_screen()
+                
+                lines = [
+                    "====================================================".ljust(60),
+                    "🚁 RASPBERRY PI DRONE CONTROL (Headless)".ljust(60),
+                    "====================================================".ljust(60),
+                    f" Status:  {'🔴 ARMED' if s['armed'] else '🟢 DISARMED'} | Mode: {s['mode']}".ljust(60),
+                    f" Battery: {s['battery_v']:.2f}V ({s['battery_remaining']}%) | Current: {s['battery_a']:.1f}A".ljust(60),
+                    f" GPS:     {s['gps_fix']} Fix | Satellites: {s['num_sats']}".ljust(60),
+                    f" Attitude: R:{s['roll']:>5.1f}° | P:{s['pitch']:>5.1f}° | Y:{s['yaw']:>5.1f}°".ljust(60),
+                    f" Alt:      {s['alt']:.1f}m | Speed: {s['groundspeed']:.1f}m/s".ljust(60),
+                    "----------------------------------------------------".ljust(60),
+                    f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}".ljust(60),
+                    "----------------------------------------------------".ljust(60),
+                    f" [Options] ARM | [Share] DISARM | [PS] KILL (STOP)".ljust(60),
+                    f" DEBUG: Last Button Code Received: {handler.last_button}".ljust(60),
+                    "====================================================".ljust(60)
+                ]
+                
+                sys.stdout.write("\n".join(lines) + "\n")
+                sys.stdout.flush()
             
-            # Use a list of lines to print all at once to minimize network packets over SSH
-            lines = [
-                "====================================================".ljust(60),
-                "🚁 RASPBERRY PI DRONE CONTROL (Headless)".ljust(60),
-                "====================================================".ljust(60),
-                f" Status:  {'🔴 ARMED' if s['armed'] else '🟢 DISARMED'} | Mode: {s['mode']}".ljust(60),
-                f" Battery: {s['battery_v']:.2f}V ({s['battery_remaining']}%) | Current: {s['battery_a']:.1f}A".ljust(60),
-                f" GPS:     {s['gps_fix']} Fix | Satellites: {s['num_sats']}".ljust(60),
-                f" Attitude: R:{s['roll']:>5.1f}° | P:{s['pitch']:>5.1f}° | Y:{s['yaw']:>5.1f}°".ljust(60),
-                f" Alt:      {s['alt']:.1f}m | Speed: {s['groundspeed']:.1f}m/s".ljust(60),
-                "----------------------------------------------------".ljust(60),
-                f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}".ljust(60),
-                "----------------------------------------------------".ljust(60),
-                f" [Options] ARM | [Share] DISARM | [PS] KILL (STOP)".ljust(60),
-                f" DEBUG: Last Button Code Received: {handler.last_button}".ljust(60),
-                "====================================================".ljust(60)
-            ]
-            
-            sys.stdout.write("\n".join(lines) + "\n")
-            sys.stdout.flush()
-            
-            time.sleep(0.1) # Frequency reduced to 10Hz for smoother SSH
+            iteration += 1
+            time.sleep(0.05) # Loop runs at 20Hz
 
     except KeyboardInterrupt:
         print("\n👋 Exiting safely...")

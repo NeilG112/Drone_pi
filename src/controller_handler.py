@@ -28,20 +28,24 @@ class ControllerHandler:
     def find_device(self):
         """Find the controller device by name"""
         devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-        found_any = False
+        
+        # Priority: device with both EV_KEY and EV_ABS
+        for device in devices:
+            if self.device_name in device.name:
+                caps = device.capabilities()
+                if ecodes.EV_KEY in caps and ecodes.EV_ABS in caps:
+                    self.device = device
+                    print(f"✅ Found {device.name} (Main Node) at {device.path}")
+                    return True
+        
+        # Fallback: any device with the name
         for device in devices:
             if self.device_name in device.name:
                 self.device = device
-                print(f"✅ Found {device.name} at {device.path}")
-                found_any = True
-                # Usually there are 3 devices for a PS4 controller. 
-                # We want the one that has buttons and axes.
-                # If we don't get events, we might need to try another one.
-                caps = device.capabilities()
-                if ecodes.EV_KEY in caps and ecodes.EV_ABS in caps:
-                    print(f"🎯 This looks like the main controller node.")
-                    return True
-        return found_any
+                print(f"⚠️ Found {device.name} (Partial Node) at {device.path}")
+                return True
+                
+        return False
 
     def start(self):
         """Start the background reading thread"""
@@ -81,19 +85,26 @@ class ControllerHandler:
                             val_max = info.max
                             
                             # Map to 1000-2000
-                            # normalized = (val - min) / (max - min)
-                            # rc = 1000 + normalized * 1000
                             normalized = (event.value - val_min) / (val_max - val_min)
                             
                             if key == "throttle":
-                                # Throttle: Up is 1000, Down is 2000 (usually) -> We want Up 2000, Down 1000
+                                # control.py: throttle = int(1500 - (raw_throttle * 500))
+                                # raw_throttle is -1.0 to 1.0. 
+                                # In evdev: normalized 0.0 is top (-1.0), 1.0 is bottom (1.0).
+                                # So 0.0 -> 2000, 1.0 -> 1000.
                                 self.rc_values[key] = int(2000 - (normalized * 1000))
                             elif key == "pitch":
-                                # Pitch: Up is 1000, Down is 2000 -> We want Up 1000 (Forward), Down 2000 (Backward)
-                                # Wait, standard ArduPilot is Pitch Up (forward) is 1000? 
-                                # Actually, it's stick forward = low value (1000), stick back = high value (2000)
+                                # control.py: pitch = int(1500 + (raw_pitch * 500))
+                                # raw_pitch is -1.0 to 1.0.
+                                # normalized 0.0 is top (-1.0) -> 1000, 1.0 is bottom (1.0) -> 2000.
                                 self.rc_values[key] = int(1000 + (normalized * 1000))
-                            else:
+                            elif key == "yaw":
+                                # control.py: yaw = int(1500 + (raw_yaw * 500))
+                                # normalized 0.0 is left (-1.0) -> 1000, 1.0 is right (1.0) -> 2000.
+                                self.rc_values[key] = int(1000 + (normalized * 1000))
+                            elif key == "roll":
+                                # control.py: roll = int(1500 + (raw_roll * 500))
+                                # normalized 0.0 is left (-1.0) -> 1000, 1.0 is right (1.0) -> 2000.
                                 self.rc_values[key] = int(1000 + (normalized * 1000))
                                 
                 # Handle buttons
