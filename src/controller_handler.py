@@ -15,6 +15,9 @@ class ControllerHandler:
         self.running = False
         self.thread = None
         
+        # Test mode: Force roll and yaw to center (1500) to test for stick drift issues
+        self.test_mode_force_center = False
+        
         # PS4 stick mapping (evdev)
         # ABS_X: Left X (Yaw), ABS_Y: Left Y (Throttle)
         # ABS_RX: Right X (Roll), ABS_RY: Right Y (Pitch)
@@ -92,6 +95,9 @@ class ControllerHandler:
         # Filter parameters
         self.ALPHA = 0.25
         
+        # Deadzone: Increase from 5% to 10% to better handle stick drift
+        self.DEADZONE_PERCENT = 0.10
+        
         print(f"🎮 Connected to {self.device.name} at {self.device.path}")
         self.running = True
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -113,7 +119,7 @@ class ControllerHandler:
             max_range = (info.max - info.min) // 2
             
             delta = value - center
-            if abs(delta) < (max_range * 0.05): # 5% deadzone
+            if abs(delta) < (max_range * self.DEADZONE_PERCENT): # Configurable deadzone (default 10%)
                 return 0.0
                 
             n = max(-1.0, min(1.0, delta / max_range))
@@ -157,9 +163,16 @@ class ControllerHandler:
                             else:
                                 raw_state[key] = val
                                 
-                                # Update filtered state
-                                for axis in filtered_state:
-                                    filtered_state[axis] = self._apply_lpf(raw_state[axis], filtered_state[axis])
+                                # Update filtered state for this specific axis only
+                                # If value is 0 (within deadzone), decay more aggressively toward 0
+                                if abs(val) < 0.01:  # Very close to zero (within deadzone)
+                                    # Aggressive decay toward zero to prevent drift accumulation
+                                    filtered_state[key] = filtered_state[key] * 0.7  # Decay 30% per update
+                                    if abs(filtered_state[key]) < 0.01:  # If very small, snap to zero
+                                        filtered_state[key] = 0.0
+                                else:
+                                    # Normal LPF for active input
+                                    filtered_state[key] = self._apply_lpf(val, filtered_state[key])
                                 
                                 # Convert to 1000-2000 for RC
                                 if key == "throttle":
@@ -183,8 +196,23 @@ class ControllerHandler:
         """Return clamped RC values"""
         def clamp(n):
             return max(1000, min(2000, n))
-            
-        return {k: clamp(v) for k, v in self.rc_values.items()}
+        
+        rc = {k: clamp(v) for k, v in self.rc_values.items()}
+        
+        # Test mode: Force roll and yaw to center (1500) to eliminate stick drift
+        if self.test_mode_force_center:
+            rc["roll"] = 1500
+            rc["yaw"] = 1500
+        
+        return rc
+    
+    def set_test_mode(self, enable=True):
+        """Enable/disable test mode that forces roll and yaw to 1500"""
+        self.test_mode_force_center = enable
+        if enable:
+            print("🧪 TEST MODE: Roll and Yaw forced to 1500 (center)")
+        else:
+            print("✅ TEST MODE: Disabled - Using actual controller values")
 
     def is_button_pressed(self, btn_code):
         """Check if a button is currently pressed (1)"""

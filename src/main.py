@@ -97,6 +97,11 @@ def main():
             # LAND: D-Pad Down (HAT Y = 1)
             if handler.dpad["y"] == 1:
                 drone.set_mode("LAND")
+            
+            # TEST MODE: D-Pad Up (HAT Y = -1) - Toggle force center for roll/yaw
+            if handler.dpad["y"] == -1:
+                handler.set_test_mode(not handler.test_mode_force_center)
+                time.sleep(0.3)  # Debounce
 
             # 6. Send RC Overrides to Drone (FAST: 20Hz)
             drone.send_rc_override(
@@ -111,17 +116,24 @@ def main():
                 s = drone.status
                 clear_screen()
                 
+                # Voltage drop warning
+                voltage_warning = ""
+                if rc["throttle"] > 1170 and s['battery_v'] > 0:
+                    # Check if voltage dropped significantly (you may need to adjust threshold)
+                    voltage_warning = " ⚠️ VOLTAGE DROP DETECTED"
+                
                 lines = [
                     "====================================================".ljust(60),
                     "🚁 RASPBERRY PI DRONE CONTROL (Headless)".ljust(60),
                     "====================================================".ljust(60),
                     f" Status:  {'🔴 ARMED' if s['armed'] else '🟢 DISARMED'} | Mode: {s['mode']}".ljust(60),
-                    f" Battery: {s['battery_v']:.2f}V ({s['battery_remaining']}%) | Current: {s['battery_a']:.1f}A".ljust(60),
+                    f" Battery: {s['battery_v']:.2f}V ({s['battery_remaining']}%) | Current: {s['battery_a']:.1f}A{voltage_warning}".ljust(60),
                     f" GPS:     {s['gps_fix']} Fix | Satellites: {s['num_sats']}".ljust(60),
                     f" Attitude: R:{s['roll']:>5.1f}° | P:{s['pitch']:>5.1f}° | Y:{s['yaw']:>5.1f}°".ljust(60),
                     f" Alt:      {s['alt']:.1f}m | Speed: {s['groundspeed']:.1f}m/s".ljust(60),
                     "----------------------------------------------------".ljust(60),
                     f" 🎮 RC IN: T:{rc['throttle']:<4} | Y:{rc['yaw']:<4} | R:{rc['roll']:<4} | P:{rc['pitch']:<4}".ljust(60),
+                    f" 🧪 TEST: {'ON (R/Y=1500)' if handler.test_mode_force_center else 'OFF'} | [D-Pad Up] Toggle".ljust(60),
                     "----------------------------------------------------".ljust(60),
                     f" [X] ARM | [Circle] DISARM | [Options] KILL | [△/▢/D-Pad] MODES".ljust(60),
                     f" DEBUG: Last Button Code Received: {handler.last_button}".ljust(60),
