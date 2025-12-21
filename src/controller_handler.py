@@ -163,9 +163,12 @@ class ControllerHandler:
                                 
                                 # Convert to 1000-2000 for RC
                                 if key == "throttle":
-                                    # LIMITED: 0.0 to 1.0 -> 1000 to 1250
-                                    # This prevents voltage drops on current power system
-                                    self.rc_values["throttle"] = int(1000 + (filtered_state["throttle"] * 250))
+                                    # REFINED: Maps narrow window of 1140 to 1175 over full trigger throw
+                                    if filtered_state["throttle"] < 0.02:
+                                        self.rc_values["throttle"] = 1000
+                                    else:
+                                        # Scale 0.0-1.0 to 1140-1175
+                                        self.rc_values["throttle"] = int(1140 + (filtered_state["throttle"] * 35))
                                 else:
                                     # -1.0 to 1.0 -> 1000 to 2000 (center 1500)
                                     self.rc_values[key] = int(1500 + (filtered_state[key] * 500))
